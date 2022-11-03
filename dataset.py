@@ -3,7 +3,14 @@ from pathlib import Path
 import pandas as pd
 
 
-__all__ = ('load_amg', 'load_cleansed_ids', 'load_masd_labels_cleansed', 'load_midi_info_v2', 'load_all')
+__all__ = (
+    'load_amg',
+    'load_cleansed_ids',
+    'load_masd_labels_cleansed',
+    'load_midi_info_v2',
+    'load_lastfm',
+    'load_file_names',
+)
 
 
 def load_amg(dataset_path: str = 'lpd') -> pd.DataFrame:
@@ -44,26 +51,15 @@ def load_masd_labels_cleansed(dataset_path: str = 'lpd') -> pd.DataFrame:
     return pd.read_csv(Path(dataset_path) / 'cleansed_ids.txt', sep='    ', engine='python', names=('file_id', 'msd_id'))
 
 
-def load_all(dataset_path: str = 'lpd', reload: bool = False) -> pd.DataFrame:
-    preloaded_path = Path(dataset_path) / 'preloaded.csv'
-    if reload or not preloaded_path.exists():
-        masd_labels = load_masd_labels_cleansed(dataset_path)
-        cleansed_ids = load_cleansed_ids(dataset_path)
-        data = pd.merge(masd_labels, cleansed_ids, on='msd_id', how='outer')
-        midi_info = load_midi_info_v2(dataset_path)
-        data = pd.merge(data, midi_info, on='file_id', how='outer')
-        amg = load_amg(dataset_path)
-        data = pd.merge(data, amg, on='msd_id', how='outer')
-        data.to_csv(preloaded_path)
-        return data
-    else:
-        return pd.read_csv(preloaded_path)
+def load_lastfm(genre: str, dataset_path: str = 'lpd') -> pd.DataFrame:
+    return pd.read_csv(Path(dataset_path) / 'lastfm' / f'id_list_{genre}.txt', names=('msd_id', ))
 
 
-if __name__ == '__main__':
-    ids = load_cleansed_ids()
-    print(ids.columns)
-    midi_info = load_midi_info_v2()
-    print(midi_info.columns)
-    data = pd.merge(midi_info, ids, how='outer')
-    print(data.head())
+def load_file_names(dataset_path: str = 'lpd') -> pd.DataFrame:
+    cleansed_directory = Path(dataset_path) / 'lpd_5' / 'lpd_5_cleansed'
+    paths = tuple(cleansed_directory.rglob('*.npz'))
+    names = tuple(path.stem for path in paths)
+    return pd.DataFrame({
+        'file_id': names,
+        'file_path': paths
+    })
