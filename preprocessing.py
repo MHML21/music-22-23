@@ -10,6 +10,13 @@ pd.options.display.max_columns = None
 pd.options.display.width = 0
 
 
+__all__ = (
+    'get_file_paths',
+    'clean_multitrack',
+    'load_tracks_from_genre',
+)
+
+
 def get_file_paths(genre: str) -> tuple[str]:
     ids = load_cleansed_ids()
     files = load_file_names()
