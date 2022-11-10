@@ -11,37 +11,28 @@ from preprocessing import *
 
 
 
-def weighted_multilabel_loss(pos_weight):
-    def weighted_cross_entropy_with_logits(labels, logits):
-        return tf.nn.weighted_cross_entropy_with_logits(
-            labels, logits, pos_weight
-        )
-    return weighted_cross_entropy_with_logits
-
-
 def newmodel(summary=True):
     """
     Creates model
-    Input dims (batch, vocab size, input time length)
-    Ouptut dims (batch, vocab size, output time length)
+    Input dims (batch, vocab size, input length)
+    Ouptut dims (batch, vocab size, output length)
     
     Embedding -> LSTM(dropout) -> LSTM -> Dense(dropout) -> Output
     """
     model = Sequential()
-    model.add(layers.Embedding(
-        input_dim=HYPERPARAMS["vocab size"],
-        output_dim=HYPERPARAMS["embedding size"],
-        input_length=HYPERPARAMS["input length"])
-    )
-    model.add(layers.LSTM(64, return_sequences=True))
+    model.add(layers.InputLayer(
+        input_shape=(HYPERPARAMS["vocab size"], HYPERPARAMS["input length"]),
+        batch_size=HYPERPARAMS["batch size"]
+    ))
+    model.add(layers.LSTM(256, return_sequences=True))
     model.add(layers.Dropout(0.3))
-    model.add(layers.LSTM(64))
-    model.add(layers.Dense(64, activation='relu'))
+    model.add(layers.LSTM(256))
+    model.add(layers.Dense(256, activation='relu'))
     model.add(layers.Dropout(0.3))
-    model.add(layers.Dense(HYPERPARAMS["vocab size"], activation='softmax'))
+    model.add(layers.Dense(HYPERPARAMS["vocab size"], activation='sigmoid'))
     model.compile(
         optimizer=optimizers.RMSprop(learning_rate=HYPERPARAMS["learning rate"]),
-        loss=weighted_multilabel_loss(pos_weight=HYPERPARAMS["pos weight"]),
+        loss=tf.keras.losses.BinaryCrossentropy(),
         metrics=["acc"],
     )
     if summary:
@@ -50,12 +41,12 @@ def newmodel(summary=True):
 
 
 
-def train_model(model, x_train, y_train):
+def train_model(model, X, Y):
     """
     Trains new model using data from filename
     
-    x_train = (n, 84, 192) array
-    y_train = (n, 84, 1) one-hot-encoded output of next note
+    X = (n, vocab size, input length) array
+    Y = (n, vocab size, output length) one-hot-encoded output of next note
     """
     
     # prepare model save and tensorboard
@@ -65,7 +56,7 @@ def train_model(model, x_train, y_train):
     
     # start training
     model.fit(
-        x_train, y_train,
+        X, Y,
         batch_size=HYPERPARAMS["batch size"],
         epochs=HYPERPARAMS["epochs"],
         validation_split=HYPERPARAMS["validation ratio"],
@@ -84,19 +75,36 @@ def loadmodel():
     model.load_weights("saves/saves.ckpt")
     model.compile(
         optimizer=optimizers.RMSprop(learning_rate=HYPERPARAMS["learning rate"]),
-        loss=weighted_multilabel_loss(pos_weight=HYPERPARAMS["pos weight"]),
+        loss=tf.keras.losses.BinaryCrossentropy(),
         metrics=["acc"],
     )
     return model
 
 
 
-if __name__ == '__main__':
+def load_data():
     dataset = load_tracks_from_genre(GENRE, TRACK)
-    X = np.split(dataset, HYPERPARAMS["input length"])
-    #n = X.shape(1)
-    Y = X[:, 0, :]
-    print(X.shape)
-    print(Y.shape)
+    ndata = (dataset.shape[0] // HYPERPARAMS["input length"]) * HYPERPARAMS["input length"] # trim dataset to multiple of input length
 
-    #newmodel()
+    # split traindata into multiple data of size (notes, input length)
+    X = np.array(np.split(dataset[:ndata, :], HYPERPARAMS["input length"])) # output dim = (input length, sample count, notes)
+    X = np.moveaxis(X, 0, -1)      # move input length to last axis
+    Y = X[:, :, :HYPERPARAMS["output length"]]
+    
+    # last X has no corresponding Y, first Y has no corresponding X
+    X = X[:-1]
+    Y = np.squeeze(Y[1:])
+    
+    print(f"Loaded {X.shape[0]} training samples")
+    print(f"X shape = {X.shape}")
+    print(f"Y shape = {Y.shape}")
+    return (X, Y)
+
+    
+
+
+
+if __name__ == '__main__':
+    X, Y = load_data()
+    model = newmodel()
+    train_model(model, X, Y)
